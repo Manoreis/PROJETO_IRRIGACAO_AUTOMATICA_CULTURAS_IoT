@@ -1,6 +1,6 @@
 # PROJETO_IRRIGACAO_AUTOMATICA_CULTURAS_IoT
 ## SISTEMA DE IRRIGAÇÃO INTELIGENTE - CONEXÃO WiFi/CELULAR
-###Componentes Principais:
+##Componentes Principais:
 *Arduino Uno
 *Central de controle. Conectado ao ESP8266 (NodeMCU) via comunicação serial (UART).
 *ESP8266 (NodeMCU)
