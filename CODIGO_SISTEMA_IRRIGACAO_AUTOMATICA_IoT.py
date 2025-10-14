@@ -1,80 +1,75 @@
-#define BLYNK_PRINT Serial
-#define BLYNK_TEMPLATE_ID "YourTemplateID"
-#define BLYNK_TEMPLATE_NAME "SmartIrrigation"
-#define BLYNK_AUTH_TOKEN "YourAuthToken"
+#include <LiquidCrystal.h>
 
-#include <ESP8266WiFi.h>
-#include <BlynkSimpleEsp8266.h>
-#include <BlynkTimer.h>
+// --- DEFINIÇÕES DE PINOS ---
+const int rs = 12, en = 11, d4 = 5, d5 = 4, d6 = 3, d7 = 2;
+LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 
-// Credenciais Wi-Fi
-char ssid[] = "SEU_WIFI";
-char pass[] = "SENHA_WIFI";
+// Sensores e Atuadores (CONFIRMADOS NO SEU PRINT)
+const int pinoTemperatura = A0;  // Sensor TMP36
+const int pinoUmidade     = A2;  // Sensor YL-69
+const int pinoPiezo       = 10;  // Buzzer
+const int pinoMotor       = 7;   // Motor DC
 
-// Token do Blynk
-char auth[] = BLYNK_AUTH_TOKEN;
+// --- LIMITES ---
+const int   LIMITE_IRRIGACAO   = 450;   // Limite analógico para irrigar
+const float LIMITE_TEMPERATURA = 25.0;  // Limite em °C para acionar alarme
 
-// Pinos
-const int sensorPin = A0;    // Sensor de umidade (YL-69)
-const int bombaPin  = D1;    // Relé conectado à bomba
-
-// Configurações
-const int LIMIAR_SECO = 600; // Valores < 600 = solo seco (ajustável conforme calibração)
-const unsigned long INTERVALO_LEITURA = 10000; // 10 segundos entre leituras
-const unsigned long TEMPO_IRRIGACAO = 10000;  // 10 segundos de irrigação
-
-// Estado do sistema
-bool bombaLigada = false;
-unsigned long tempoInicioIrrigacao = 0;
-
-// Timer do Blynk
-BlynkTimer timer;
-
-// Função para ler sensor e decidir irrigação
-void verificaUmidade() {
-  int umidade = analogRead(sensorPin);
-  Blynk.virtualWrite(V0, umidade); // Envia para o app
-  Serial.print("Umidade do solo: ");
-  Serial.println(umidade);
-
-  unsigned long tempoAtual = millis();
-
-  // Se a bomba NÃO está ligada
-  if (!bombaLigada) {
-    if (umidade < LIMIAR_SECO) {
-      // Solo seco → liga bomba por 10s
-      digitalWrite(bombaPin, HIGH);
-      bombaLigada = true;
-      tempoInicioIrrigacao = tempoAtual;
-      Blynk.virtualWrite(V1, 1); // Bomba ligada
-      Serial.println(">>> Solo seco! Irrigando por 10s...");
-    } else {
-      digitalWrite(bombaPin, LOW);
-      Blynk.virtualWrite(V1, 0); // Bomba desligada
-    }
-  }
-  // Se a bomba ESTÁ ligada, verifica se já passou o tempo
-  else {
-    if (tempoAtual - tempoInicioIrrigacao >= TEMPO_IRRIGACAO) {
-      digitalWrite(bombaPin, LOW);
-      bombaLigada = false;
-      Blynk.virtualWrite(V1, 0);
-      Serial.println(">>> Irrigação concluída.");
-    }
-    // Caso contrário, mantém ligada (não faz nada aqui)
-  }
+// --- FUNÇÃO DE CONVERSÃO DE TEMPERATURA (PARA TMP36) ---
+float get_temperatura() {
+  int leitura = analogRead(pinoTemperatura);
+  float tensao = leitura * (5.0 / 1024.0);  // Converte para Volts
+  return (tensao - 0.5) * 100.0; // Conversão TMP36 (500mV = 0°C, 10mV/°C)
 }
 
+// --- SETUP ---
 void setup() {
-  Serial.begin(115200);
-  pinMode(bombaPin, OUTPUT);
-  digitalWrite(bombaPin, LOW); // Garante que a bomba inicie desligada
-
-  Blynk.begin(auth, ssid, pass);
-  timer.setInterval(INTERVALO_LEITURA, verificaUmidade); // Lê a cada 10s
+  Serial.begin(9600);
+  lcd.begin(16, 2);
+  pinMode(pinoPiezo, OUTPUT);
+  pinMode(pinoMotor, OUTPUT);
+  lcd.noCursor();
+  lcd.setCursor(0, 0);
+  lcd.print("Autoirrigacao V2");
+  delay(2000);
+  lcd.clear();
 }
 
+// --- LOOP PRINCIPAL ---
 void loop() {
-  Blynk.run();
-  timer.run(); // Executa o timer sem bloquear
+  int umidadeRaw = analogRead(pinoUmidade);
+  float temperatura = get_temperatura();
+
+  // --- ATUALIZAÇÃO DO DISPLAY ---
+  lcd.setCursor(0, 0);
+  lcd.print("Temp: ");
+  lcd.print(temperatura, 1);
+  lcd.print((char)223); // Símbolo de grau
+  lcd.print("C      "); // Espaços extras para limpar a linha
+
+  lcd.setCursor(0, 1);
+  lcd.print("Umidade: ");
+
+  // --- CONTROLE DO BUZZER ---
+  if (temperatura >= LIMITE_TEMPERATURA) {
+    digitalWrite(pinoPiezo, HIGH);
+  } else {
+    digitalWrite(pinoPiezo, LOW);
+  }
+
+  // --- CONTROLE DA IRRIGAÇÃO ---
+  if (umidadeRaw < LIMITE_IRRIGACAO) {
+    digitalWrite(pinoMotor, HIGH);
+    lcd.print("IRRIGANDO!");
+  } else {
+    digitalWrite(pinoMotor, LOW);
+    lcd.print("OK        ");
+  }
+
+  // --- MONITOR SERIAL (opcional) ---
+  Serial.print("Temp: ");
+  Serial.print(temperatura);
+  Serial.print(" C | Umidade: ");
+  Serial.println(umidadeRaw);
+
+  delay(500);
 }
